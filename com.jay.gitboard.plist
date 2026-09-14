@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  gitboard LaunchAgent — starts gitboard at login and keeps it running.
+  Install:  cp com.jay.gitboard.plist ~/Library/LaunchAgents/
+            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jay.gitboard.plist
+  Stop/remove: launchctl bootout gui/$(id -u)/com.jay.gitboard
+  NOTE: the node path below is from nvm and is version-specific — update it if you change Node.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jay.gitboard</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jay/.nvm/versions/node/v24.18.0/bin/node</string>
+    <string>/Users/jay/work/gitboard/server.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jay/work/gitboard</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/jay/.nvm/versions/node/v24.18.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PORT</key>
+    <string>4321</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jay/work/gitboard/gitboard.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jay/work/gitboard/gitboard.log</string>
+</dict>
+</plist>

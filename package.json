@@ -1,0 +1,12 @@
+{
+  "name": "gitboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local web dashboard for the git status of every repo under a root",
+  "type": "module",
+  "bin": { "gitboard": "server.mjs" },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": { "node": ">=18" }
+}
