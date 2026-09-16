@@ -23,6 +23,7 @@ Then open http://localhost:4321.
 | `PORT` | `4321` | HTTP port |
 | `GITBOARD_ROOTS` | `~/work:~/worktree:~/work-codex` | Colon-separated roots to scan (e.g. `~/work:~/src`) |
 | `GITBOARD_DEPTH` | `4` | How deep to look for `.git` under each root |
+| `GITBOARD_HOST` | Tailscale IPv4, else `127.0.0.1` | Host used in the Services "open" links (probing always uses 127.0.0.1) |
 
 ## What it shows
 

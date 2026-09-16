@@ -10,7 +10,7 @@ import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { readdir, stat, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, networkInterfaces } from 'node:os';
 import { join, dirname, basename, relative, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -202,6 +202,7 @@ const SERVICES = [
   { key: 'token',    name: 'Token/Exchange',port: 3070, repo: 'jayverse-token',   blurb: 'JYVE · jUSD constant-product pool' },
   { key: 'defi',     name: 'DeFi — jeETH',  port: 3030, repo: 'jayverse-defi',    blurb: 'liquid-staking vault and wrapper' },
   { key: 'wallet',   name: 'Wallet',        port: 3060, repo: 'jayverse-wallet',  blurb: 'embedded wallet + MV3 extension' },
+  { key: 'game',     name: 'Game',          port: 3050, repo: 'jayverse-game',    blurb: '3D street — Three.js, also embedded at Rabbit /game' },
   { key: 'number',   name: 'Number',        port: 3090, repo: 'jayverse-number',  blurb: 'maths and investment notes' },
   { key: 'gitboard', name: 'gitboard',      port: 4321, repo: 'gitboard',         blurb: 'this dashboard' },
   // The chain, probed as a chain rather than as a web page: a 404 from an RPC
@@ -245,16 +246,36 @@ function probeRpc(url) {
   });
 }
 
+/** The address the "open" links use. Probing goes to 127.0.0.1 because that
+ *  is where the server is; the links go to the Tailscale address because that
+ *  is where jay is — the dashboard is read from the phone and the home desktop
+ *  as much as from this Mac, and a 127.0.0.1 link opened there points at the
+ *  wrong machine (jay, 2026-09-16). Tailscale hands out addresses in the CGNAT
+ *  block 100.64.0.0/10, so the interface carrying one of those is Tailscale.
+ *  Override with GITBOARD_HOST; falls back to 127.0.0.1 when Tailscale is off. */
+function linkHost() {
+  if (process.env.GITBOARD_HOST) return process.env.GITBOARD_HOST;
+  for (const addrs of Object.values(networkInterfaces())) {
+    for (const a of addrs || []) {
+      if (a.family !== 'IPv4' || a.internal) continue;
+      const [o1, o2] = a.address.split('.').map(Number);
+      if (o1 === 100 && o2 >= 64 && o2 <= 127) return a.address;
+    }
+  }
+  return '127.0.0.1';
+}
+
 async function services() {
+  const host = linkHost();
   const local = await Promise.all(SERVICES.map(async (svc) => {
     const url = `http://127.0.0.1:${svc.port}${svc.path || '/'}`;
     const r = svc.kind === 'rpc' ? await probeRpc(`http://127.0.0.1:${svc.port}`) : await probeHttp(url);
-    return { ...svc, open: `http://127.0.0.1:${svc.port}`, ...r };
+    return { ...svc, open: `http://${host}:${svc.port}`, ...r };
   }));
   const remote = await Promise.all(REMOTE.map(async (svc) => ({
     ...svc, open: svc.url, ...(await probeHttp(svc.url)),
   })));
-  return { local, remote, generatedAt: new Date().toISOString() };
+  return { local, remote, host, generatedAt: new Date().toISOString() };
 }
 
 // --- http ----------------------------------------------------------------
