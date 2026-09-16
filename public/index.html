@@ -102,6 +102,35 @@
     .commits li { display: flex; gap: 8px; padding: 2px 0; color: var(--text2); }
     .commits .h { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
     .commits .subj { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+
+    /* ── Services (2026-09-16) ──
+       Two questions, one page: "what is uncommitted" and "what is running".
+       Tabs were built and dropped (jay, 2026-09-16): a tab hides one answer
+       behind a click, and the whole value of a wall dashboard is that you glance
+       at it. Services sit BELOW the repos rather than above — jay: "I can scroll
+       for the status". Repos are what he came for; the ports are what he checks
+       when something is not answering.
+
+       A service card. Deliberately the same shape as a repo card — same grid,
+       same left status stripe — so the eye reads both views the same way. */
+    .card.up { border-left: 3px solid var(--clean); }
+    .card.down { border-left: 3px solid var(--line); }
+    .card.error { border-left: 3px solid var(--behind); }
+    .badge.up { color: var(--clean); background: var(--clean-soft); }
+    .badge.down { color: var(--text2); background: transparent; border: 1px dashed var(--line); }
+    .badge.error { color: var(--behind); background: var(--dirty-soft); }
+    .port { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .76rem;
+      color: var(--text2); }
+    .svc-blurb { color: var(--text2); font-size: .78rem; margin-top: 8px; }
+    .svc-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: .76rem;
+      color: var(--text2); flex-wrap: wrap; }
+    .svc-foot a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .svc-foot a:hover { text-decoration: underline; }
+    .svc-foot .detail { border: 0; padding: 0; background: none; font-size: .76rem; }
+    .hint { color: var(--text2); font-size: .78rem; margin: 0 0 14px; }
+    #svcGrid:not(:empty) { margin-top: 30px; }
+    .hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
     .empty { color: var(--text2); padding: 40px; text-align: center; }
     .spin { color: var(--text2); font-size: .78rem; }
   </style>
@@ -113,7 +142,7 @@
       <span class="roots" id="roots"></span>
     </div>
     <div class="controls">
-      <input type="search" id="q" placeholder="Filter repos by name…" autocomplete="off" />
+      <input type="search" id="q" placeholder="Filter by name…" autocomplete="off" />
       <label class="toggle"><input type="checkbox" id="dirtyOnly" /> Dirty only</label>
       <label class="toggle"><input type="checkbox" id="auto" checked /> Auto-refresh</label>
       <button id="refresh">Refresh</button>
@@ -123,6 +152,7 @@
   <main>
     <div class="groups" id="grid"></div>
     <div class="empty" id="empty" hidden></div>
+    <div class="groups" id="svcGrid"></div>
   </main>
   <script src="/app.js"></script>
 </body>

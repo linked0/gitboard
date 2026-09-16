@@ -1,4 +1,9 @@
-// gitboard front-end: poll /api/repos, render cards, expand one on click.
+// gitboard front-end: two sections over one machine, on one page.
+//   Repos    — poll /api/repos, render cards, expand one on click.
+//   Services — poll /api/services, render which Jayverse dev servers are up.
+// Both are rendered every poll and the page scrolls between them (jay,
+// 2026-09-16: "I can scroll for the status") — a tab would have hidden one
+// answer behind a click, which is the opposite of what a wall dashboard is for.
 const grid = document.getElementById('grid');
 const emptyEl = document.getElementById('empty');
 const metaEl = document.getElementById('meta');
@@ -7,12 +12,14 @@ const q = document.getElementById('q');
 const dirtyOnly = document.getElementById('dirtyOnly');
 const auto = document.getElementById('auto');
 const refreshBtn = document.getElementById('refresh');
+const svcGrid = document.getElementById('svcGrid');
 
 let repos = [];
 let roots = [];                // scanned roots, in server order — one section each
 let home = '';                 // for shortening /Users/jay/... to ~/...
 const openPaths = new Set();   // which repo detail panels are expanded
 let timer = null;
+let svcData = { local: [], remote: [] };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const tilde = (p) => (home && p.startsWith(home) ? '~' + p.slice(home.length) : p);
@@ -165,8 +172,80 @@ grid.addEventListener('click', (e) => {
   else { openPaths.add(path); loadDetail(card, path); }
 });
 
+// ── services ────────────────────────────────────────────────────────────
+
+function svcCardHtml(s) {
+  const state = s.state || 'down';
+  // "down" is stated plainly rather than as an error: most of the time it
+  // means jay has not started that one, which is not a fault.
+  const label = state === 'up' ? 'UP' : state === 'error' ? 'ERROR' : 'not running';
+  const bits = [];
+  if (s.code) bits.push(`HTTP ${esc(s.code)}`);
+  if (s.detail) bits.push(esc(s.detail));
+  if (state === 'up' && s.ms != null) bits.push(`${s.ms} ms`);
+  return `
+    <div class="card ${state}">
+      <div class="card-head" style="cursor:default">
+        <div class="name-row">
+          <span class="name">${esc(s.name)}</span>
+          ${s.port ? `<span class="port">:${esc(s.port)}</span>` : ''}
+          <span class="badge ${state}">${label}</span>
+        </div>
+        <div class="svc-blurb">${esc(s.blurb)}</div>
+        <div class="svc-foot">
+          ${state === 'up' ? `<a href="${esc(s.open)}" target="_blank" rel="noreferrer">open ↗</a>` : ''}
+          ${bits.length ? `<span class="detail">${bits.join(' · ')}</span>` : ''}
+          ${s.repo ? `<span class="detail">~/work/${esc(s.repo)}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+function svcGroupHtml(title, items, note) {
+  if (!items.length) return '';
+  const up = items.filter((s) => s.state === 'up').length;
+  return `
+    <div class="group">
+      <div class="group-head">
+        <div class="group-title"><span class="icon">▸</span>${esc(title)}</div>
+        <div class="rule"></div>
+        <div class="group-count">${up}/${items.length} up</div>
+      </div>
+      ${note ? `<p class="hint">${note}</p>` : ''}
+      <div class="grid">${items.map(svcCardHtml).join('')}</div>
+    </div>`;
+}
+
+function renderServices() {
+  const needle = q.value.trim().toLowerCase();
+  const match = (s) => !needle || s.name.toLowerCase().includes(needle) || String(s.port || '').includes(needle);
+  const local = (svcData.local || []).filter(match);
+  const remote = (svcData.remote || []).filter(match);
+  const down = (svcData.local || []).filter((s) => s.state !== 'up');
+  // The one genuinely useful instruction: how to start what is not running.
+  const note = down.length
+    ? `Not running: ${down.map((s) => esc(s.name)).join(', ')}. Start one with `
+      + `<code>cd ~/work/&lt;repo&gt; &amp;&amp; pnpm dev</code>.`
+    : 'Everything on this machine is answering.';
+  svcGrid.innerHTML =
+    svcGroupHtml('On this machine', local, note) +
+    svcGroupHtml('Depends on (not ours to run)', remote);
+}
+
+async function loadServices() {
+  try {
+    svcData = await fetch('/api/services').then((r) => r.json());
+    renderServices();
+  } catch {
+    svcGrid.innerHTML = '<p class="hint">Could not probe the services.</p>';
+  }
+}
+
 async function load() {
   metaEl.textContent = 'refreshing…';
+  // The two halves are independent, so neither waits for the other — a slow
+  // git call must not delay the port probes, and vice versa.
+  loadServices();
   try {
     const data = await fetch('/api/repos').then((r) => r.json());
     repos = data.repos || [];
@@ -176,7 +255,10 @@ async function load() {
     const dirty = repos.filter((r) => r.dirty).length;
     const wt = repos.filter((r) => r.worktree).length;
     const wtBit = wt ? ` · ${wt} ${wt === 1 ? 'worktree' : 'worktrees'}` : '';
-    metaEl.textContent = `${repos.length} repos${wtBit} · ${dirty} dirty · ${new Date().toLocaleTimeString()}`;
+    const svcAll = svcData.local || [];
+    const svcUp = svcAll.filter((s) => s.state === 'up').length;
+    const svcBit = svcAll.length ? ` · ${svcUp}/${svcAll.length} services up` : '';
+    metaEl.textContent = `${repos.length} repos${wtBit} · ${dirty} dirty${svcBit} · ${new Date().toLocaleTimeString()}`;
     render();
   } catch {
     metaEl.textContent = 'failed to reach server';
@@ -188,7 +270,8 @@ function schedule() {
   if (auto.checked) timer = setInterval(load, 5000);
 }
 
-q.addEventListener('input', render);
+// The filter box drives both sections — one box, one page.
+q.addEventListener('input', () => { render(); renderServices(); });
 dirtyOnly.addEventListener('change', render);
 auto.addEventListener('change', schedule);
 refreshBtn.addEventListener('click', load);

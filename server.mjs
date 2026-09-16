@@ -1,4 +1,5 @@
-// gitboard — a tiny local web dashboard for the git status of every repo under a root.
+// gitboard — a tiny local web dashboard for the git status of every repo under a root,
+// and (since 2026-09-16) which Jayverse dev servers are up on this machine.
 // Zero dependencies: Node built-ins only. Read-only (never runs a git command that writes).
 //
 //   node server.mjs                 # scans ~/work, ~/worktree, ~/work-codex; serves on :4321
@@ -178,6 +179,84 @@ async function detail(dir) {
   };
 }
 
+// --- services ------------------------------------------------------------
+//
+// "Which parts of Jayverse are actually up on this machine right now?" (jay,
+// 2026-09-16). gitboard already answers that question for repositories; a repo
+// being clean tells you nothing about whether its dev server is running, and
+// jay was checking seven ports by hand.
+//
+// Ports are the source of truth here, not a config file: a dev server is
+// identified by the port it binds, and that is exactly what the browser will
+// try too. Keep this list in step with `localPort` in rabbit's lib/jayverse.ts
+// — that file decides where the portal's cards point when it is served from a
+// local or Tailscale address, so a disagreement between the two shows up as a
+// dead link on jay's phone.
+//
+// Read-only by construction, like the git half: a GET, or an eth_chainId,
+// and nothing else.
+const SERVICES = [
+  { key: 'rabbit',   name: 'Rabbit',        port: 3100, repo: 'rabbit',           blurb: 'the portal — /chains, /live, /game' },
+  { key: 'verex',    name: 'Verex web',     port: 3000, repo: 'verex',            blurb: 'prediction market UI' },
+  { key: 'verexapi', name: 'Verex API',     port: 4000, repo: 'verex',            blurb: 'order book + settlement', path: '/health' },
+  { key: 'token',    name: 'Token/Exchange',port: 3070, repo: 'jayverse-token',   blurb: 'JYVE · jUSD constant-product pool' },
+  { key: 'defi',     name: 'DeFi — jeETH',  port: 3030, repo: 'jayverse-defi',    blurb: 'liquid-staking vault and wrapper' },
+  { key: 'wallet',   name: 'Wallet',        port: 3060, repo: 'jayverse-wallet',  blurb: 'embedded wallet + MV3 extension' },
+  { key: 'number',   name: 'Number',        port: 3090, repo: 'jayverse-number',  blurb: 'maths and investment notes' },
+  { key: 'gitboard', name: 'gitboard',      port: 4321, repo: 'gitboard',         blurb: 'this dashboard' },
+  // The chain, probed as a chain rather than as a web page: a 404 from an RPC
+  // endpoint would look like "down" when it is simply not a website.
+  { key: 'anvil',    name: 'Local Anvil',   port: 8545, repo: null, kind: 'rpc',  blurb: "jay's working chain — do not kill" },
+];
+
+// A remote we depend on but do not run. Listed because "is it me or is it
+// them" is the first question when a local page shows no chain data.
+const REMOTE = [
+  { key: 'devnet', name: 'Jayverse devnet', url: 'https://devnet.jaylabs.xyz/status', blurb: 'hosted Anvil, chain 313370' },
+];
+
+async function timed(fn) {
+  const t0 = Date.now();
+  try { const v = await fn(); return { ...v, ms: Date.now() - t0 }; }
+  catch (e) { return { state: 'down', detail: String((e && e.message) || e), ms: Date.now() - t0 }; }
+}
+
+/** A dev server answering on a port. Anything below 500 counts as up — a
+ *  redirect or a 404 is still a live server, and several of these redirect. */
+function probeHttp(url) {
+  return timed(async () => {
+    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(2500) });
+    return { state: res.status < 500 ? 'up' : 'error', code: res.status };
+  });
+}
+
+/** A JSON-RPC endpoint. Reports the chain id, which is the useful fact. */
+function probeRpc(url) {
+  return timed(async () => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
+      signal: AbortSignal.timeout(2500),
+    });
+    const body = await res.json();
+    if (!body || !body.result) return { state: 'error', code: res.status, detail: 'no result' };
+    return { state: 'up', code: res.status, detail: `chain ${parseInt(body.result, 16)}` };
+  });
+}
+
+async function services() {
+  const local = await Promise.all(SERVICES.map(async (svc) => {
+    const url = `http://127.0.0.1:${svc.port}${svc.path || '/'}`;
+    const r = svc.kind === 'rpc' ? await probeRpc(`http://127.0.0.1:${svc.port}`) : await probeHttp(url);
+    return { ...svc, open: `http://127.0.0.1:${svc.port}`, ...r };
+  }));
+  const remote = await Promise.all(REMOTE.map(async (svc) => ({
+    ...svc, open: svc.url, ...(await probeHttp(svc.url)),
+  })));
+  return { local, remote, generatedAt: new Date().toISOString() };
+}
+
 // --- http ----------------------------------------------------------------
 
 function json(res, code, data) {
@@ -219,6 +298,7 @@ const server = createServer(async (req, res) => {
       if (!dirs.includes(path)) return json(res, 404, { error: 'unknown repo' });
       return json(res, 200, await detail(path));
     }
+    if (url.pathname === '/api/services') return json(res, 200, await services());
     if (url.pathname === '/' || url.pathname === '/index.html') return serveStatic(res, 'index.html');
     if (url.pathname === '/app.js') return serveStatic(res, 'app.js');
     res.writeHead(404); res.end('not found');
