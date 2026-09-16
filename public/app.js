@@ -109,8 +109,8 @@ function groupHtml(g) {
 
 function render() {
   const list = filtered();
-  // dirty first, then name
-  list.sort((a, b) => (b.dirty - a.dirty) || a.name.localeCompare(b.name));
+  // alphabetical by name (jay, 2026-09-16: was dirty-first, which reshuffled cards as repos changed)
+  list.sort((a, b) => a.name.localeCompare(b.name));
   if (!list.length) {
     grid.innerHTML = '';
     emptyEl.hidden = false;
