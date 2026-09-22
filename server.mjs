@@ -217,7 +217,7 @@ const SERVICES = [
     blurb: 'Knowledge Notes preview — scripts/serve.sh, repo root as Pages serves it' },
   // The chain, probed as a chain rather than as a web page: a 404 from an RPC
   // endpoint would look like "down" when it is simply not a website.
-  { key: 'anvil',    name: 'Local Anvil',   port: 8545, repo: null, kind: 'rpc',  blurb: "jay's working chain — do not kill" },
+  { key: 'anvil',    name: 'Anvil — Local', port: 8545, repo: null, kind: 'rpc',  blurb: "jay's working chain — do not kill" },
 ];
 
 // A remote we depend on but do not run. Listed because "is it me or is it
@@ -276,6 +276,13 @@ function linkHost() {
   return '127.0.0.1';
 }
 
+// Cards are shown in alphabetical order by name (jay, 2026-09-22). Sorted here rather than by
+// reordering SERVICES, because that array is grouped editorially and its comments explain why each
+// entry sits where it does — sorting the output keeps both, and the list stays scannable as it grows.
+// localeCompare, not `<`, so case and the em dash do not decide the order: 'gitboard' belongs
+// between Game and Number, where the eye looks for it, not after every capitalised name.
+const byName = (a, b) => a.name.localeCompare(b.name, 'en');
+
 async function services() {
   const host = linkHost();
   const local = await Promise.all(SERVICES.map(async (svc) => {
@@ -286,7 +293,7 @@ async function services() {
   const remote = await Promise.all(REMOTE.map(async (svc) => ({
     ...svc, open: svc.url, ...(await probeHttp(svc.url)),
   })));
-  return { local, remote, host, generatedAt: new Date().toISOString() };
+  return { local: local.sort(byName), remote: remote.sort(byName), host, generatedAt: new Date().toISOString() };
 }
 
 // --- http ----------------------------------------------------------------
