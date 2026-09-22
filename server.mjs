@@ -205,6 +205,16 @@ const SERVICES = [
   { key: 'game',     name: 'Game',          port: 3050, repo: 'jayverse-game',    blurb: '3D street — Three.js, also embedded at Rabbit /game' },
   { key: 'number',   name: 'Number',        port: 3090, repo: 'jayverse-number',  blurb: 'maths and investment notes' },
   { key: 'gitboard', name: 'gitboard',      port: 4321, repo: 'gitboard',         blurb: 'this dashboard' },
+  // Alice is the odd one out: its link must say `localhost`, not the Tailscale
+  // address. The page signs in to Firebase, and Firebase refuses any origin not
+  // on its authorized list — `localhost` is on it, a 100.x address is not, and
+  // the failure it returns (auth/unauthorized-domain) is the exact bug this
+  // entry would otherwise reproduce (jay, 2026-09-22). No loss from the phone:
+  // this server only runs on the Mac, and the phone has alice.jaylabs.xyz,
+  // which is authorized. Started with alice's scripts/serve.sh, so "down" here
+  // usually means "not serving", not "broken".
+  { key: 'alice',    name: 'Alice notes',   port: 4173, repo: 'alice', openHost: 'localhost',
+    blurb: 'Knowledge Notes preview — scripts/serve.sh, repo root as Pages serves it' },
   // The chain, probed as a chain rather than as a web page: a 404 from an RPC
   // endpoint would look like "down" when it is simply not a website.
   { key: 'anvil',    name: 'Local Anvil',   port: 8545, repo: null, kind: 'rpc',  blurb: "jay's working chain — do not kill" },
@@ -252,7 +262,8 @@ function probeRpc(url) {
  *  as much as from this Mac, and a 127.0.0.1 link opened there points at the
  *  wrong machine (jay, 2026-09-16). Tailscale hands out addresses in the CGNAT
  *  block 100.64.0.0/10, so the interface carrying one of those is Tailscale.
- *  Override with GITBOARD_HOST; falls back to 127.0.0.1 when Tailscale is off. */
+ *  Override globally with GITBOARD_HOST, or per service with `openHost` when a
+ *  service only works on one name; falls back to 127.0.0.1 when Tailscale is off. */
 function linkHost() {
   if (process.env.GITBOARD_HOST) return process.env.GITBOARD_HOST;
   for (const addrs of Object.values(networkInterfaces())) {
@@ -270,7 +281,7 @@ async function services() {
   const local = await Promise.all(SERVICES.map(async (svc) => {
     const url = `http://127.0.0.1:${svc.port}${svc.path || '/'}`;
     const r = svc.kind === 'rpc' ? await probeRpc(`http://127.0.0.1:${svc.port}`) : await probeHttp(url);
-    return { ...svc, open: `http://${host}:${svc.port}`, ...r };
+    return { ...svc, open: `http://${svc.openHost || host}:${svc.port}`, ...r };
   }));
   const remote = await Promise.all(REMOTE.map(async (svc) => ({
     ...svc, open: svc.url, ...(await probeHttp(svc.url)),
