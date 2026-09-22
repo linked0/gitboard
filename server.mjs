@@ -205,15 +205,14 @@ const SERVICES = [
   { key: 'game',     name: 'Game',          port: 3050, repo: 'jayverse-game',    blurb: '3D street — Three.js, also embedded at Rabbit /game' },
   { key: 'number',   name: 'Number',        port: 3090, repo: 'jayverse-number',  blurb: 'maths and investment notes' },
   { key: 'gitboard', name: 'gitboard',      port: 4321, repo: 'gitboard',         blurb: 'this dashboard' },
-  // Alice is the odd one out: its link must say `localhost`, not the Tailscale
-  // address. The page signs in to Firebase, and Firebase refuses any origin not
-  // on its authorized list — `localhost` is on it, a 100.x address is not, and
-  // the failure it returns (auth/unauthorized-domain) is the exact bug this
-  // entry would otherwise reproduce (jay, 2026-09-22). No loss from the phone:
-  // this server only runs on the Mac, and the phone has alice.jaylabs.xyz,
-  // which is authorized. Started with alice's scripts/serve.sh, so "down" here
-  // usually means "not serving", not "broken".
-  { key: 'alice',    name: 'Alice notes',   port: 4173, repo: 'alice', openHost: 'localhost',
+  // Alice briefly pinned openHost to `localhost`, because its page signs in to
+  // Firebase and a 100.x address was not on Firebase's authorized list, so the
+  // Tailscale link landed on auth/unauthorized-domain. jay then asked for the
+  // Tailscale URL to work (2026-09-22), so the address was added to the
+  // authorized domains and the pin came off — this row is now ordinary, and the
+  // open link reaches the phone like every other one. Started with alice's
+  // scripts/serve.sh, so "down" here usually means "not serving", not "broken".
+  { key: 'alice',    name: 'Alice notes',   port: 4173, repo: 'alice',
     blurb: 'Knowledge Notes preview — scripts/serve.sh, repo root as Pages serves it' },
   // The chain, probed as a chain rather than as a web page: a 404 from an RPC
   // endpoint would look like "down" when it is simply not a website.

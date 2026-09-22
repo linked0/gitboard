@@ -25,9 +25,9 @@ Then open http://localhost:4321.
 | `GITBOARD_DEPTH` | `4` | How deep to look for `.git` under each root |
 | `GITBOARD_HOST` | Tailscale IPv4, else `127.0.0.1` | Host used in the Services "open" links (probing always uses 127.0.0.1) |
 
-A single service can override that host with `openHost` in `SERVICES` — Alice pins its link to
-`localhost`, because Firebase sign-in rejects any origin it has not authorized and a Tailscale
-address is not one.
+A single service can override that host with `openHost` in `SERVICES`, for a service that only works
+on one name. Nothing uses it at present: Alice did, until its Tailscale address was added to
+Firebase's authorized domains and the pin became unnecessary.
 
 ## What it shows
 
