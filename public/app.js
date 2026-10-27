@@ -194,6 +194,7 @@ function svcCardHtml(s) {
         <div class="svc-blurb">${esc(s.blurb)}</div>
         <div class="svc-foot">
           ${state === 'up' ? `<a href="${esc(s.open)}" target="_blank" rel="noreferrer">open ↗</a>` : ''}
+          ${state !== 'up' && s.canRun ? `<button type="button" class="run-btn" data-run="${esc(s.key)}" ${s.starting || runWait[s.key] ? 'disabled' : ''}>${s.starting || runWait[s.key] ? 'starting…' : '▶ Run'}</button>` : ''}
           ${bits.length ? `<span class="detail">${bits.join(' · ')}</span>` : ''}
           ${s.repo ? `<span class="detail">~/work/${esc(s.repo)}</span>` : ''}
         </div>
@@ -224,13 +225,36 @@ function renderServices() {
   const down = (svcData.local || []).filter((s) => s.state !== 'up');
   // The one genuinely useful instruction: how to start what is not running.
   const note = down.length
-    ? `Not running: ${down.map((s) => esc(s.name)).join(', ')}. Start one with `
-      + `<code>cd ~/work/&lt;repo&gt; &amp;&amp; pnpm dev</code>.`
+    ? `Not running: ${down.map((s) => esc(s.name)).join(', ')}. Start one with ▶ Run on its card `
+      + `(or <code>cd ~/work/&lt;repo&gt; &amp;&amp; pnpm dev</code>).`
     : 'Everything on this machine is answering.';
   svcGrid.innerHTML =
     svcGroupHtml('On this machine', local, note) +
     svcGroupHtml('Depends on (not ours to run)', remote);
 }
+
+// ▶ Run (jay, 2026-10-27: "can we add a run button that run the process"): ask the server to start the card's fixed dev
+// command, then re-probe every 2 s until the card is UP (Next.js takes a few seconds to bind), for at most 90 s.
+const runWait = {};   // key -> true while this page waits for it to come up
+svcGrid.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-run]'); if (!b) return;
+  const key = b.dataset.run;
+  b.disabled = true; b.textContent = 'starting…';
+  try {
+    const r = await fetch('/api/run', { method: 'POST', headers: { 'content-type': 'application/json', 'x-gitboard': 'run' }, body: JSON.stringify({ key }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok && r.status !== 409) throw new Error(j.error || `HTTP ${r.status}`);
+  } catch (err) { b.disabled = false; b.textContent = '▶ Run'; alert(`Could not start: ${err.message || err}`); return; }
+  runWait[key] = true;
+  const t0 = Date.now();
+  const tick = async () => {
+    await loadServices();
+    const s = (svcData.local || []).find((x) => x.key === key);
+    if ((s && s.state === 'up') || Date.now() - t0 > 90000) { delete runWait[key]; renderServices(); return; }
+    setTimeout(tick, 2000);
+  };
+  setTimeout(tick, 2000);
+});
 
 async function loadServices() {
   try {

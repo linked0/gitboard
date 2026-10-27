@@ -6,6 +6,12 @@ terminal to check them.
 
 Zero dependencies (Node built-ins only). **Read-only**: it never runs a git command that writes.
 
+**▶ Run** (2026-10-27): a service card that is not running has a Run button. It starts that service's fixed `run`
+command from `SERVICES` in `server.mjs` (e.g. `pnpm dev` in its repo), detached, logging to
+`~/Library/Logs/gitboard-run-<key>.log`. The browser sends only the service key, never a command; `POST /api/run`
+requires the `x-gitboard: run` header and, when an `Origin` is sent, this server's own host, so another website cannot
+trigger it. Anvil has no Run on purpose: how the working chain is started is jay's call.
+
 ## Run
 
 ```bash

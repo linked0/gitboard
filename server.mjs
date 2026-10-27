@@ -1,15 +1,16 @@
 // gitboard — a tiny local web dashboard for the git status of every repo under a root,
 // and (since 2026-09-16) which Jayverse dev servers are up on this machine.
-// Zero dependencies: Node built-ins only. Read-only (never runs a git command that writes).
+// Zero dependencies: Node built-ins only. Read-only toward git (never runs a git command that writes). The one thing it
+// starts is a service's own dev server, from the fixed `run` entry below, when jay presses ▶ Run (2026-10-27).
 //
 //   node server.mjs                 # scans ~/work, ~/worktree, ~/work-codex; serves on :4321
 //   PORT=5000 node server.mjs       # different port
 //   GITBOARD_ROOTS=~/work:~/src node server.mjs   # scan multiple roots (colon-separated)
 
 import { createServer } from 'node:http';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { readdir, stat, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, openSync, closeSync } from 'node:fs';
 import { homedir, networkInterfaces } from 'node:os';
 import { join, dirname, basename, relative, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -196,14 +197,14 @@ async function detail(dir) {
 // Read-only by construction, like the git half: a GET, or an eth_chainId,
 // and nothing else.
 const SERVICES = [
-  { key: 'rabbit',   name: 'Rabbit',        port: 3100, repo: 'rabbit',           blurb: 'the portal — /chains, /live, /game' },
-  { key: 'verex',    name: 'Verex web',     port: 3000, repo: 'verex',            blurb: 'prediction market UI' },
-  { key: 'verexapi', name: 'Verex API',     port: 4000, repo: 'verex',            blurb: 'order book + settlement', path: '/health' },
-  { key: 'token',    name: 'Token/Exchange',port: 3070, repo: 'jayverse-token',   blurb: 'JYVE · jUSD constant-product pool' },
-  { key: 'defi',     name: 'DeFi — jeETH',  port: 3030, repo: 'jayverse-defi',    blurb: 'liquid-staking vault and wrapper' },
-  { key: 'wallet',   name: 'Wallet',        port: 3060, repo: 'jayverse-wallet',  blurb: 'embedded wallet + MV3 extension' },
-  { key: 'game',     name: 'Game',          port: 3050, repo: 'jayverse-game',    blurb: '3D street — Three.js, also embedded at Rabbit /game' },
-  { key: 'number',   name: 'Number',        port: 3090, repo: 'jayverse-number',  blurb: 'maths and investment notes' },
+  { key: 'rabbit',   name: 'Rabbit',        port: 3100, repo: 'rabbit',           blurb: 'the portal — /chains, /live, /game', run: { cwd: 'rabbit', cmd: ['pnpm', 'dev'] } },
+  { key: 'verex',    name: 'Verex web',     port: 3000, repo: 'verex',            blurb: 'prediction market UI', run: { cwd: 'verex', cmd: ['pnpm', '--filter', '@verex/web', 'dev'] } },
+  { key: 'verexapi', name: 'Verex API',     port: 4000, repo: 'verex',            blurb: 'order book + settlement', path: '/health', run: { cwd: 'verex', cmd: ['pnpm', '--filter', '@verex/api', 'dev'] } },
+  { key: 'token',    name: 'Token/Exchange',port: 3070, repo: 'jayverse-token',   blurb: 'JYVE · jUSD constant-product pool', run: { cwd: 'jayverse-token/app', cmd: ['pnpm', 'dev'] } },
+  { key: 'defi',     name: 'DeFi — jeETH',  port: 3030, repo: 'jayverse-defi',    blurb: 'liquid-staking vault and wrapper', run: { cwd: 'jayverse-defi', cmd: ['pnpm', 'dev'] } },
+  { key: 'wallet',   name: 'Wallet',        port: 3060, repo: 'jayverse-wallet',  blurb: 'embedded wallet + MV3 extension', run: { cwd: 'jayverse-wallet', cmd: ['pnpm', 'dev'] } },
+  { key: 'game',     name: 'Game',          port: 3050, repo: 'jayverse-game',    blurb: '3D street — Three.js, also embedded at Rabbit /game', run: { cwd: 'jayverse-game', cmd: ['pnpm', 'dev'] } },
+  { key: 'number',   name: 'Number',        port: 3090, repo: 'jayverse-number',  blurb: 'maths and investment notes', run: { cwd: 'jayverse-number', cmd: ['pnpm', 'dev'] } },
   { key: 'gitboard', name: 'gitboard',      port: 4321, repo: 'gitboard',         blurb: 'this dashboard' },
   // Alice briefly pinned openHost to `localhost`, because its page signs in to
   // Firebase and a 100.x address was not on Firebase's authorized list, so the
@@ -213,9 +214,11 @@ const SERVICES = [
   // open link reaches the phone like every other one. Started with alice's
   // scripts/serve.sh, so "down" here usually means "not serving", not "broken".
   { key: 'alice',    name: 'Alice notes',   port: 4173, repo: 'alice',
-    blurb: 'Knowledge Notes preview — scripts/serve.sh, repo root as Pages serves it' },
+    blurb: 'Knowledge Notes preview — scripts/serve.sh, repo root as Pages serves it',
+    run: { cwd: 'alice', cmd: ['bash', 'scripts/serve.sh'] } },
   // The chain, probed as a chain rather than as a web page: a 404 from an RPC
   // endpoint would look like "down" when it is simply not a website.
+  // No `run`: how jay's working chain is started (state file, flags) is his, and a bare `anvil` would be an empty chain.
   { key: 'anvil',    name: 'Anvil — Local', port: 8545, repo: null, kind: 'rpc',  blurb: "jay's working chain — do not kill" },
 ];
 
@@ -287,12 +290,55 @@ async function services() {
   const local = await Promise.all(SERVICES.map(async (svc) => {
     const url = `http://127.0.0.1:${svc.port}${svc.path || '/'}`;
     const r = svc.kind === 'rpc' ? await probeRpc(`http://127.0.0.1:${svc.port}`) : await probeHttp(url);
-    return { ...svc, open: `http://${svc.openHost || host}:${svc.port}`, ...r };
+    const { run, ...pub } = svc;   // the command stays on the server
+    return { ...pub, open: `http://${svc.openHost || host}:${svc.port}`, canRun: !!run, starting: r.state !== 'up' && starting(svc.key), ...r };
   }));
   const remote = await Promise.all(REMOTE.map(async (svc) => ({
     ...svc, open: svc.url, ...(await probeHttp(svc.url)),
   })));
   return { local: local.sort(byName), remote: remote.sort(byName), host, generatedAt: new Date().toISOString() };
+}
+
+// --- ▶ Run ------------------------------------------------------------------
+//
+// "can we add a run button that run the process" (jay, 2026-10-27, a screenshot of the cards). The page sends only a
+// service key; the command is the fixed `run` entry above, so nothing typed in a browser ever reaches a shell. The process
+// is detached (its own session, so a gitboard restart does not take it down) and writes to ~/Library/Logs/gitboard-run-<key>.log.
+// Guards: POST only; a custom header a cross-site form or <img> cannot send without a CORS preflight, which this server never
+// answers; and an Origin, when the browser sends one, must be this server's own host (the Mac, or its Tailscale address
+// from the phone). Pressing Run on a service that is already up, or was started under 90 s ago and is still alive, does
+// nothing.
+const LOGS = join(homedir(), 'Library/Logs');
+const started = new Map();   // key -> { pid, at }
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const starting = (key) => { const s = started.get(key); return !!s && Date.now() - s.at < 90000 && alive(s.pid); };
+
+function runService(svc) {
+  const cwd = join(homedir(), 'work', svc.run.cwd);
+  if (!existsSync(cwd)) throw new Error(`no such folder: ~/work/${svc.run.cwd}`);
+  const log = join(LOGS, `gitboard-run-${svc.key}.log`);
+  const fd = openSync(log, 'a');
+  // launchd's PATH has node's bin and Homebrew; add Foundry, as an interactive shell would
+  const PATH = [dirname(process.execPath), join(homedir(), '.foundry/bin'), process.env.PATH || '/usr/bin:/bin'].join(':');
+  const child = spawn(svc.run.cmd[0], svc.run.cmd.slice(1), { cwd, detached: true, stdio: ['ignore', fd, fd], env: { ...process.env, PATH } });
+  closeSync(fd);
+  child.unref();
+  started.set(svc.key, { pid: child.pid, at: Date.now() });
+  return { pid: child.pid, log };
+}
+
+function sameOrigin(req) {
+  if (req.headers['x-gitboard'] !== 'run') return false;
+  const origin = req.headers.origin;
+  if (!origin) return true;   // same-origin fetches may omit it; the custom header already ruled out a plain cross-site request
+  try { return new URL(origin).host === req.headers.host; } catch { return false; }
+}
+
+function readBody(req) {
+  return new Promise((ok, no) => {
+    let s = ''; req.on('data', (c) => { s += c; if (s.length > 4096) { no(new Error('too large')); req.destroy(); } });
+    req.on('end', () => ok(s)); req.on('error', no);
+  });
 }
 
 // --- http ----------------------------------------------------------------
@@ -337,6 +383,18 @@ const server = createServer(async (req, res) => {
       return json(res, 200, await detail(path));
     }
     if (url.pathname === '/api/services') return json(res, 200, await services());
+    if (url.pathname === '/api/run') {
+      if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
+      if (!sameOrigin(req)) return json(res, 403, { error: 'not from this dashboard' });
+      let key = '';
+      try { key = String(JSON.parse(await readBody(req) || '{}').key || ''); } catch { return json(res, 400, { error: 'bad body' }); }
+      const svc = SERVICES.find((s) => s.key === key && s.run);
+      if (!svc) return json(res, 404, { error: 'no run command for this service' });
+      const now = await probeHttp(`http://127.0.0.1:${svc.port}${svc.path || '/'}`);
+      if (now.state === 'up') return json(res, 409, { error: 'already running' });
+      if (starting(svc.key)) return json(res, 409, { error: 'already starting' });
+      return json(res, 200, { ok: true, ...runService(svc) });
+    }
     if (url.pathname === '/' || url.pathname === '/index.html') return serveStatic(res, 'index.html');
     if (url.pathname === '/app.js') return serveStatic(res, 'app.js');
     res.writeHead(404); res.end('not found');

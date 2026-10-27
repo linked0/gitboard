@@ -127,6 +127,10 @@
     .svc-foot a { color: var(--accent); text-decoration: none; font-weight: 600; }
     .svc-foot a:hover { text-decoration: underline; }
     .svc-foot .detail { border: 0; padding: 0; background: none; font-size: .76rem; }
+    .run-btn { font: inherit; font-size: .74rem; font-weight: 700; color: var(--accent); background: transparent;
+      border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; cursor: pointer; }
+    .run-btn:hover:not(:disabled) { border-color: var(--accent); }
+    .run-btn:disabled { color: var(--text2); cursor: default; }
     .hint { color: var(--text2); font-size: .78rem; margin: 0 0 14px; }
     #svcGrid:not(:empty) { margin-top: 30px; }
     .hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
