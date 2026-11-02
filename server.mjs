@@ -218,8 +218,12 @@ const SERVICES = [
     run: { cwd: 'alice', cmd: ['bash', 'scripts/serve.sh'] } },
   // The chain, probed as a chain rather than as a web page: a 404 from an RPC
   // endpoint would look like "down" when it is simply not a website.
-  // No `run`: how jay's working chain is started (state file, flags) is his, and a bare `anvil` would be an empty chain.
-  { key: 'anvil',    name: 'Anvil — Local', port: 8545, repo: null, kind: 'rpc',  blurb: "jay's working chain — do not kill" },
+  // ▶ Run (jay, 2026-11-02: "can you also add Run button to this"): the resume command from alice docs/memo.md §1 — the
+  // Sepolia fork with its state file in ~/work, so the chain comes back as it was, never an empty one. SEPOLIA_RPC comes from
+  // rabbit/.env at start time and never sits in this file; with no state file it refuses rather than fork a fresh chain.
+  { key: 'anvil',    name: 'Anvil — Local', port: 8545, repo: null, kind: 'rpc',  blurb: "jay's working chain — do not kill",
+    run: { cwd: '.', cmd: ['bash', '-c', 'test -f anvil-sepolia-state.json || { echo "no ~/work/anvil-sepolia-state.json — start it by hand (memo.md §1, first run)"; exit 1; }; ' +
+      'set -a; . rabbit/.env; set +a; exec anvil --fork-url "$SEPOLIA_RPC" --chain-id 11155111 --state ./anvil-sepolia-state.json --state-interval 60'] } },
 ];
 
 // A remote we depend on but do not run. Listed because "is it me or is it
